@@ -8,13 +8,7 @@ uniform sampler2D normals_texture;
 
 uniform float zNear;
 uniform float zFar;
-
-uniform float FOV;
-
-uniform float screenHeight;
-
-uniform mat4 proj;
-uniform float aspectRatio;
+uniform mat4 invproj;
 
 //Cor final do fragmento
 layout(location=0) out vec4 hbao_colour;
@@ -32,6 +26,23 @@ float LinearizeDepth(float depth)
     return (2.0 * zNear) / (zFar + zNear - z * (zFar - zNear));	
 }
 
+vec3 vertextViewspacePosFromDepth(vec2 vTexCoord)
+{
+    // Get the depth value for this pixel
+    float z = LinearizeDepth(texture(depth_texture, vTexCoord).r);  
+	
+    // Get x/w and y/w from the viewport position
+    float x = vTexCoord.x * 2 - 1;
+    float y = (vTexCoord.y) * 2 - 1;
+    vec4 vProjectedPos = vec4(x, y, z, 1.0f);
+	
+    // Transform by the inverse projection matrix
+    vec4 vPositionVS = invproj*vProjectedPos;
+	
+    // Divide by w to get the view-space position
+    return vPositionVS.xyz / vPositionVS.w;  
+}
+
 float hbao(in vec2 origin)
 {
 	float lastHeight = 0;
@@ -41,17 +52,15 @@ float hbao(in vec2 origin)
 	//Constants
 	float sampleDirection = 8;
 	int sampleSteeps = 4;
-	float sampleRange = 0.01;
-	float kernelSize = 8.0;
+	float sampleRange = 0.001;
+	float kernelSize = 16.0;
 	
 	//Depth at origin point
 	float originDepth = LinearizeDepth(texture(depth_texture, origin).r);
 	vec2 textSize = textureSize(depth_texture, 0);
-	
-	float tanHalfFov = tan(FOV*0.5);
-	vec2 ndcOriginUV = vec2(origin.x * 2.0 - 1.0, origin.y * 2.0 - 1.0);
-	vec3 originViewRay = vec3(ndcOriginUV.x * tanHalfFov * aspectRatio, ndcOriginUV.y * tanHalfFov, 1.0);
-	vec3 viewspaceOrigin = originViewRay*originDepth;
+
+	//Get origin position in viewspace
+	vec3 viewspaceOrigin = vertextViewspacePosFromDepth(origin);
 	
 	//Origin Normal
 	vec3 normal = (texture(normals_texture, origin).rgb*2.0-vec3(1.0));
@@ -98,25 +107,26 @@ float hbao(in vec2 origin)
 				float sampleDepth = LinearizeDepth(texture(depth_texture, sampleCoords).r);
 				sampleHeight = (originDepth - sampleDepth);
 				
-				vec2 ndcSampleUV = vec2(sampleCoords.x * 2.0 - 1.0, sampleCoords.y * 2.0 - 1.0);
-				vec3 sampleViewRay = vec3(ndcSampleUV.x * tanHalfFov * aspectRatio, ndcSampleUV.y * tanHalfFov, 1.0);
-				vec3 viewspaceSample = sampleViewRay*sampleDepth;
+				//Get sample position in viewspace
+				vec3 viewspaceSample = vertextViewspacePosFromDepth(sampleCoords);
 				
 				//Get horizon vector
-				vec3 viewspaceDirection = -(viewspaceSample - viewspaceOrigin);
+				vec3 viewspaceDirection = (viewspaceSample-viewspaceOrigin);
 				horizon = TBN * vec3(viewspaceDirection.xy, 0);
 				float lenghtXY = length(horizon.xy);
 				sampleDistance = length(vec3(dir*s, sampleHeight));				
 				
+				
+				
 				if(length(viewspaceDirection) <= sampleRange)
 				{
-					if(sampleHeight > lastHeight)
+					if(viewspaceDirection.z > lastHeight)
 					{
-						float currentAO = TanToSin(sampleHeight/length(dir*s)) - TanToSin(horizon.z/length(dir*s));
+						float currentAO = TanToSin(viewspaceDirection.z/length(viewspaceDirection.xy));//- TanToSin(horizon.z/length(horizon.xy));
 						
-						AO += (1-pow(length(dir*s)/kernelSize, 2))*(currentAO-lastAO);
+						AO += (1-pow(length(viewspaceDirection)/sampleRange, 2))*(currentAO-lastAO);
 						
-						lastHeight = sampleHeight;
+						lastHeight = viewspaceDirection.z;
 						lastAO = currentAO;
 					}
 				}
@@ -125,7 +135,7 @@ float hbao(in vec2 origin)
 		
 		AO /= sampleDirection;
 	
-		float AOStrenght = 1000.0f;
+		float AOStrenght = 1.0f;
 		
 		AO *= AOStrenght;
 	}

@@ -86,10 +86,7 @@ void RendererSystem::init()
 	shaders.at("HBAO")->addAtt("normals_texture");
 	shaders.at("HBAO")->addAtt("zNear");
 	shaders.at("HBAO")->addAtt("zFar");
-	shaders.at("HBAO")->addAtt("proj");
-	shaders.at("HBAO")->addAtt("FOV");
-	shaders.at("HBAO")->addAtt("aspectRatio");
-	shaders.at("HBAO")->addAtt("screenHeight");
+	shaders.at("HBAO")->addAtt("invproj");
 
 	addShader("BLUR", "shader/vertexBlur.glsl", "shader/fragmentBlur.glsl");
 	shaders.at("BLUR")->addAtt("hbao_texture");

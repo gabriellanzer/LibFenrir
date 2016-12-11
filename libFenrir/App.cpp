@@ -176,15 +176,32 @@ void App::init(int width, int height, string name, bool fullscreen)
 		int n = img->getWidth() * img->getHeight();
 		for (int i = 0; i < n; i++)
 		{
-			img->setPixel(0, 0, 0, 0, i);
+			img->setPixel(255, 255, 255, 255, i);
 		}
 
 		gResource->addImage("blank", img);
+
 	}
 	gResource->createTextureOfImage("blank", "output");
 	gResource->createTextureOfImage("blank", "painted");
 
+	{
+		Image *img = new Image(4, 4);
+		int n = img->getWidth() * img->getHeight();
+		for (int i = 0; i < n; i++)
+		{
+			img->setPixel(rand() % 255, 255, 255, 255, i);
+		}
 
+		gResource->addImage("noise", img);
+		uint id = gResource->createTextureOfImage("noise", "noise");
+		glBindTexture(GL_TEXTURE_2D, id);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+	}
 	//gClick->setMesh(gResource->getMeshShader("monkey 0"));
 
 #pragma endregion
@@ -194,7 +211,7 @@ void App::init(int width, int height, string name, bool fullscreen)
 
 	//HBAO FrameBuffer setup
 	hbaoBuffer = new FrameBuffer();
-	
+
 	//Define HBAOTexture
 	{
 		// The texture we're going to render to
@@ -359,16 +376,7 @@ void App::display()
 	glBindTexture(GL_TEXTURE_2D, gResource->getTexture("vase"));
 	FBOShader->render3D(gResource->getMeshShader("vase 0"), glm::translate(glm::scale(mat, glm::vec3(0.25, 0.25, 0.25)), glm::vec3(0, 3.26, 0)));
 
-	glBindTexture(GL_TEXTURE_2D, gResource->getTexture("sample"));
-
-
-	/*gResource->getMeshShader("monkey 0")->bindVBO(e_face);
-	FBOShader->render3D(gResource->getMeshShader("monkey 0"), mat);
-	gResource->getMeshShader("monkey 0")->bindVBO(e_texture);
-
-	gResource->getMeshShader("monkey 1")->bindVBO(e_face);
-	FBOShader->render3D(gResource->getMeshShader("monkey 1"), glm::translate(glm::mat4x4(), glm::vec3(5, 0, 1)));
-	gResource->getMeshShader("monkey 1")->bindVBO(e_texture);*/
+	glBindTexture(GL_TEXTURE_2D, gResource->getTexture("painted"));
 
 	FBOShader->render3D(gResource->getMeshShader("cube 0"), glm::translate(glm::mat4x4(), glm::vec3(-3, 1.2, 0)));
 
@@ -378,6 +386,18 @@ void App::display()
 
 
 	//-------------------------------//
+#pragma region Generate Noise And Update
+	Image *img = gResource->getImage("noise");
+	gResource->updateTextureOfImage("noise");
+	int n = img->getWidth() * img->getHeight();
+	for (int i = 0; i < n; i++)
+	{
+		img->setPixel(rand() % 255, 255, 255, 255, i);
+	}
+
+
+
+#pragma endregion
 
 #pragma region HBAO Pass
 	{
@@ -401,7 +421,7 @@ void App::display()
 		glUniform1i(uniformLocation, 0);
 		glActiveTexture(GL_TEXTURE0);
 		check_gl_error();
-		glBindTexture(GL_TEXTURE_2D, gResource->getTexture("testFBO_renderTexture"));
+		glBindTexture(GL_TEXTURE_2D, gResource->getTexture("noise"));
 
 		//Bind NormalsTexture with uniform location 1
 		uniformLocation = hbaoPass->getAtt("normals_texture");
@@ -421,17 +441,10 @@ void App::display()
 		uniformLocation = hbaoPass->getAtt("zFar");
 		glUniform1f(uniformLocation, far);
 
-		//Set Aspect Ratio
-		uniformLocation = hbaoPass->getAtt("aspectRatio");
-		glUniform1f(uniformLocation, widthScreen / heightScreen);
-
-		//Set Screen Height
-		uniformLocation = hbaoPass->getAtt("screenHeight");
-		glUniform1f(uniformLocation, heightScreen);
-
-		//Set FOV
-		uniformLocation = hbaoPass->getAtt("FOV");
-		glUniform1f(uniformLocation, fov);
+		//Set Inverse Projection Matrix
+		uniformLocation = hbaoPass->getAtt("invproj");
+		glm::mat4x4 perspective = glm::perspective<float>(fov, widthScreen / (float)heightScreen, near, far);
+		glUniformMatrix4fv(uniformLocation, 1, GL_FALSE, glm::value_ptr(glm::inverse<float>(perspective)));
 
 		//Do the actual drawing process
 		hbaoPass->render(gResource->getVAO("quadTexture"), 6, 0);
